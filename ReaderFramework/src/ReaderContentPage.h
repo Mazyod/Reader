@@ -25,7 +25,10 @@
 
 #import <UIKit/UIKit.h>
 
-@interface ReaderContentPage : UIView
+@interface ReaderContentPage : UIView {
+    @public
+    CGPDFPageRef _PDFPageRef;
+}
 
 - (id)initWithURL:(NSURL *)fileURL page:(NSInteger)page password:(NSString *)phrase;
 

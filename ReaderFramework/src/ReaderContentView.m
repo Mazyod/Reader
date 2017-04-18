@@ -36,8 +36,6 @@
 
 @implementation ReaderContentView
 {
-	ReaderContentPage *theContentView;
-
 	ReaderContentThumb *theThumbView;
 
 	UIView *theContainerView;

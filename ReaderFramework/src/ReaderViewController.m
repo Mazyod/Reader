@@ -30,16 +30,19 @@
 #import "ReaderContentView.h"
 #import "ReaderThumbCache.h"
 #import "ReaderThumbQueue.h"
+#import "ReaderContentPage.h"
 
 #import "UINavigationController+NavBarAnimation.h"
 
 #import <MessageUI/MessageUI.h>
 
-NSString * const  ReaderActionSheetItemTitleEmail    = @"Email";
-NSString * const  ReaderActionSheetItemTitlePrint    = @"Print";
-NSString * const  ReaderActionSheetItemTitleOpenIn   = @"Open In...";
-NSString * const  ReaderActionSheetItemTitleBookmark = @"Bookmark";
-NSString * const  ReaderActionSheetItemTitleUnbookmark = @"Unbookmark";
+NSString * const  ReaderActionSheetItemTitleEmail() { return NSLocalizedString(@"Email", @""); }
+NSString * const  ReaderActionSheetItemTitlePrint() { return NSLocalizedString(@"Print", @""); }
+NSString * const  ReaderActionSheetItemTitleOpenIn() { return NSLocalizedString(@"Share...", @""); }
+NSString * const  ReaderActionSheetItemTitleBookmark() { return NSLocalizedString(@"Bookmark", @""); }
+NSString * const  ReaderActionSheetItemTitleUnbookmark() { return NSLocalizedString(@"Unbookmark", @""); }
+NSString * const  ReaderActionSheetItemTitleCurrentPage() { return NSLocalizedString(@"Current Page", @""); }
+NSString * const  ReaderActionSheetItemTitleWholePDF() { return NSLocalizedString(@"Whole PDF", @""); }
 
 @interface ReaderViewController () <UIScrollViewDelegate, UIGestureRecognizerDelegate, UIActionSheetDelegate, MFMailComposeViewControllerDelegate,
 									ReaderMainPagebarDelegate, ReaderContentViewDelegate, ThumbsViewControllerDelegate>
@@ -831,14 +834,15 @@ NSString * const  ReaderActionSheetItemTitleUnbookmark = @"Unbookmark";
     
 	BOOL bookmarked = [_document.bookmarks containsIndex:page];
     
-    moreActionSheet = [[UIActionSheet alloc] initWithTitle:@"More"
+    moreActionSheet = [[UIActionSheet alloc] initWithTitle:nil
                                                   delegate:self
-                                         cancelButtonTitle:@"Dismiss"
+                                         cancelButtonTitle:NSLocalizedString(@"Cancel", @"")
                                     destructiveButtonTitle:nil
-                                         otherButtonTitles:(bookmarked ? ReaderActionSheetItemTitleUnbookmark : ReaderActionSheetItemTitleBookmark),
-                                                            ReaderActionSheetItemTitleEmail,
-                                                            ReaderActionSheetItemTitleOpenIn,
-                                                            ReaderActionSheetItemTitlePrint, nil];
+                                         otherButtonTitles:
+                       (bookmarked ? ReaderActionSheetItemTitleUnbookmark() : ReaderActionSheetItemTitleBookmark()),
+                       ReaderActionSheetItemTitleEmail(),
+                       ReaderActionSheetItemTitleOpenIn(),
+                       ReaderActionSheetItemTitlePrint(), nil];
     
     [moreActionSheet showFromBarButtonItem:moreBarButtonItem animated:YES];
 }
@@ -860,16 +864,20 @@ NSString * const  ReaderActionSheetItemTitleUnbookmark = @"Unbookmark";
 -(void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex {
     NSString *buttonTitle = [actionSheet buttonTitleAtIndex:buttonIndex];
     
-    if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleBookmark]) {
+    if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleBookmark()]) {
         [self actionSheetBookmarkDocument];
-    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleUnbookmark]) {
+    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleUnbookmark()]) {
         [self actionSheetUnbookmarkDocument];
-    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleEmail]) {
+    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleEmail()]) {
         [self actionSheetEmailDocument];
-    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleOpenIn]) {
-        [self actionSheetOpenDocument];
-    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitlePrint]) {
+    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleOpenIn()]) {
+        [self shareSingleOrAllPDF];
+    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitlePrint()]) {
         [self actionSheetPrintDocument];
+    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleCurrentPage()]) {
+        [self actionSheetOpenCurrentPage];
+    } else if ([buttonTitle isEqualToString:ReaderActionSheetItemTitleWholePDF()]) {
+        [self actionSheetOpenWholeDocument];
     }
 }
 
@@ -911,7 +919,48 @@ NSString * const  ReaderActionSheetItemTitleUnbookmark = @"Unbookmark";
 	}
 }
 
--(void)actionSheetOpenDocument {
+-(void)shareSingleOrAllPDF {
+    
+    UIActionSheet *actionSheet = [[UIActionSheet alloc] initWithTitle:nil
+                                                             delegate:self
+                                                    cancelButtonTitle:NSLocalizedString(@"Cancel", @"")
+                                               destructiveButtonTitle:nil
+                                                    otherButtonTitles:
+                                  ReaderActionSheetItemTitleCurrentPage(),
+                                  ReaderActionSheetItemTitleWholePDF(),
+                                  nil];
+    
+    [actionSheet showFromBarButtonItem:moreBarButtonItem animated:YES];
+}
+
+-(void)actionSheetOpenCurrentPage {
+    
+    NSString *dir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
+    NSString *filepath = [dir stringByAppendingPathComponent:@"export.pdf"];
+    
+    ReaderContentView *targetView = contentViews[_document.pageNumber];
+    CGPDFPageRef _currentPdfPage = targetView->theContentView->_PDFPageRef;
+    
+    
+    CGRect rect = CGPDFPageGetBoxRect(_currentPdfPage, kCGPDFArtBox);
+    UIGraphicsBeginPDFContextToFile(filepath, rect, nil);
+    UIGraphicsBeginPDFPageWithInfo(rect, nil);
+    
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGAffineTransform pdfTransform = CGPDFPageGetDrawingTransform(_currentPdfPage, kCGPDFArtBox, rect, 0, true);
+    
+    CGContextTranslateCTM(context, 0.0f, rect.size.height); CGContextScaleCTM(context, 1.0f, -1.0f);
+    
+    CGContextConcatCTM(context, pdfTransform);
+    CGContextDrawPDFPage(context, _currentPdfPage);
+    
+    UIGraphicsEndPDFContext();
+    
+    interactionController = [UIDocumentInteractionController interactionControllerWithURL:[NSURL fileURLWithPath:filepath]];
+    [interactionController presentOptionsMenuFromBarButtonItem:moreBarButtonItem animated:YES];
+}
+
+-(void)actionSheetOpenWholeDocument {
     interactionController = [UIDocumentInteractionController interactionControllerWithURL:[_document fileURL]];
     [interactionController presentOptionsMenuFromBarButtonItem:moreBarButtonItem animated:YES];
 }
