@@ -36,6 +36,14 @@
 
 #import <MessageUI/MessageUI.h>
 
+
+static NSString *currentPDFName = nil;
+
+void PDFReader_setCurrentPDFName(NSString *newName) {
+    currentPDFName = newName;
+}
+
+
 NSString * const  ReaderActionSheetItemTitleEmail() { return NSLocalizedString(@"Email", @""); }
 NSString * const  ReaderActionSheetItemTitlePrint() { return NSLocalizedString(@"Print", @""); }
 NSString * const  ReaderActionSheetItemTitleOpenIn() { return NSLocalizedString(@"Share...", @""); }
@@ -930,17 +938,23 @@ NSString * const  ReaderActionSheetItemTitleWholePDF() { return NSLocalizedStrin
                                   ReaderActionSheetItemTitleWholePDF(),
                                   nil];
     
-    [actionSheet showFromBarButtonItem:moreBarButtonItem animated:YES];
+    NSInteger delay = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad ? 0.5 : 0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [actionSheet showFromBarButtonItem:moreBarButtonItem animated:YES];
+    });
 }
 
 -(void)actionSheetOpenCurrentPage {
     
-    NSString *dir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
-    NSString *filepath = [dir stringByAppendingPathComponent:@"export.pdf"];
-    
     ReaderContentView *targetView = contentViews[_document.pageNumber];
     CGPDFPageRef _currentPdfPage = targetView->theContentView->_PDFPageRef;
     
+    // dirty hack
+    size_t pageNum = CGPDFPageGetPageNumber(_currentPdfPage);
+    NSString *filename = [NSString stringWithFormat:@"%@ - %@.pdf", currentPDFName, @(pageNum)];
+    
+    NSString *dir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
+    NSString *filepath = [dir stringByAppendingPathComponent:filename];
     
     CGRect rect = CGPDFPageGetBoxRect(_currentPdfPage, kCGPDFArtBox);
     UIGraphicsBeginPDFContextToFile(filepath, rect, nil);
@@ -956,13 +970,33 @@ NSString * const  ReaderActionSheetItemTitleWholePDF() { return NSLocalizedStrin
     
     UIGraphicsEndPDFContext();
     
-    interactionController = [UIDocumentInteractionController interactionControllerWithURL:[NSURL fileURLWithPath:filepath]];
-    [interactionController presentOptionsMenuFromBarButtonItem:moreBarButtonItem animated:YES];
+    
+    NSInteger delay = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad ? 0.5 : 0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        interactionController = [UIDocumentInteractionController interactionControllerWithURL:[NSURL fileURLWithPath:filepath]];
+        [interactionController presentOptionsMenuFromBarButtonItem:moreBarButtonItem animated:YES];
+    });
 }
 
 -(void)actionSheetOpenWholeDocument {
-    interactionController = [UIDocumentInteractionController interactionControllerWithURL:[_document fileURL]];
-    [interactionController presentOptionsMenuFromBarButtonItem:moreBarButtonItem animated:YES];
+    
+    // write file to a different location, in order to change the name
+    // dirty hack
+    NSString *filename = [NSString stringWithFormat:@"%@.pdf", currentPDFName];
+    
+    NSString *dir = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES)[0];
+    NSString *filepath = [dir stringByAppendingPathComponent:filename];
+    NSURL *fileURL = [NSURL fileURLWithPath:filepath];
+    
+    [[NSFileManager defaultManager] copyItemAtURL:_document.fileURL
+                                            toURL:fileURL
+                                            error:nil];
+    
+    NSInteger delay = UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad ? 0.5 : 0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        interactionController = [UIDocumentInteractionController interactionControllerWithURL:fileURL];
+        [interactionController presentOptionsMenuFromBarButtonItem:moreBarButtonItem animated:YES];
+    });
 }
 
 -(void)actionSheetPrintDocument {

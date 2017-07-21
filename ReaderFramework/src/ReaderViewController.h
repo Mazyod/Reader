@@ -27,6 +27,10 @@
 
 #import "ReaderDocument.h"
 
+
+void PDFReader_setCurrentPDFName(NSString *newName);
+
+
 @class ReaderViewController;
 
 @protocol ReaderViewControllerDelegate <NSObject>
